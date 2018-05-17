@@ -3,8 +3,8 @@ library(dbplyr)
 library(tidytext)
 library(foreach)
 library(magrittr)
-library(doParallel)
-registerDoParallel(4)
+#library(doParallel)
+#registerDoParallel(4)
 
 ### Globals
 TEST_MODE=FALSE
@@ -14,6 +14,7 @@ TEXT_FILES = c('test.csv',
                 'test_active.csv',
                 'train_active.csv')
 OUTPUT_DB = 'baseline_features.sqlite'
+#TEXT_FILES = c('train_active.csv')
 
 ### Inits
 if(TEST_MODE){
@@ -48,9 +49,6 @@ foreach(text_file = TEXT_FILES) %dopar%{
         mutate(
             no_img = is.na(image) %>% as.integer(),
             no_dsc = is.na(description) %>% as.integer(),
-            no_p1 = is.na(param_1) %>% as.integer(), 
-            no_p2 = is.na(param_2) %>% as.integer(), 
-            no_p3 = is.na(param_3) %>% as.integer(),
             titl_len = str_length(title),
             titl_len_log = log1p(titl_len),
             desc_len = str_length(description),
@@ -71,8 +69,8 @@ foreach(text_file = TEXT_FILES) %dopar%{
             location = str_c(city, ', ', region)
         ) %>%
         left_join(city_locations) %>%
-        select(-title, -description, -location) %>%
-        distinct(item_id)
+        select(-location) %>%
+        distinct(item_id, .keep_all=TRUE)
     
     indexes = text %>% select_if(is.character) %>% select(-item_id) %>% colnames
 
