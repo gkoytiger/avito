@@ -11,18 +11,14 @@ registerDoParallel(4)
 
 DATA_FOLDER = '~/.kaggle/competitions/avito-demand-prediction/'
 INPUT_DB = 'baseline_features.sqlite'
+OUTPUT_DB = 'submissions.sqlite'
+MODEL_ID = 'baseline'
 
 TRAIN_PARAMS =  list(
     'task'= 'train',
     'boosting_type'= 'gbdt',
     'objective'= 'regression',
     'metric'= 'rmse',
-    'max_depth'= 5,
-    'num_leaves'= 31,
-    'feature_fraction'= 0.80,
-    'bagging_fraction'= 0.90,
-    'bagging_freq'= 5,
-    'lambda_l2'= 5,
     'verbose'= 0
 )
 
@@ -53,14 +49,20 @@ INPUT_DB <-
 
 train <- 
     INPUT_DB %>% 
-    tbl('train') %>%
-    dplyr::select(-item_id, -image, -title, -description, -user_id) %>%
+    tbl('clean_train') %>%
+    select(-item_id) %>%
     collect()
 
 test <-
     INPUT_DB %>% 
+    tbl('clean_test') %>%
+    select(-item_id) %>%
+    collect()
+
+test_id <-
+    INPUT_DB %>% 
     tbl('test') %>%
-    dplyr::select(-item_id, -image, -title, -description, -user_id) %>%
+    dplyr::select(item_id) %>%
     collect()
 
 label <-
@@ -70,40 +72,72 @@ label <-
     collect()
 toc()
 
-# Preparing rules on test to (??) ignore features that irrelevant to test time
-tic('prepare rules')
-test_rules <- lgb.prepare_rules(test)
-train_data <- lgb.prepare_rules(data = train, rules = test_rules$rules)$data
-toc()
-
 # Split into Train/Val and convert into Dataset format
-tic('data reorganization')
-val_label <- label[train_data$activation_date %in% VAL_DATES,]$deal_probability
-train_label <- label[!(train_data$activation_date %in% VAL_DATES),]$deal_probability
+# tic('data reorganization')
+# val_label <- label[train$activation_date %in% VAL_DATES,]$deal_probability
+# train_label <- label[!(train$activation_date %in% VAL_DATES),]$deal_probability
 
-val_data <- 
-    train_data %>% 
-    filter(activation_date %in% VAL_DATES) %>%
-    as.matrix
+# val_data <- 
+#     train %>% 
+#     filter(activation_date %in% VAL_DATES) %>%
+#     as.matrix
+
+# train_data <- 
+#     train %>% 
+#     filter(!(activation_date %in% VAL_DATES)) %>%
+#     as.matrix
+
+# train_data <- lgb.Dataset(data = train_data,
+#                           label = train_label)
+
+# val_data <- lgb.Dataset(data = val_data,
+#                         label = val_label)
+# toc()
+
+# tic('train model')
+# model <- lgb.train(
+#     params=TRAIN_PARAMS, 
+#     train_data,
+#     nrounds=N_ROUNDS,
+#     min_data=1,
+#     early_stopping_rounds=200,
+#     categorical_feature = which(colnames(train_data) %in% CATEGORICAL_FEATURES),
+#     valids = list(train = train_data, valid = val_data)
+# )
+# toc()
+### Train full model and predict
 
 train_data <- 
-    train_data %>% 
-    filter(!(activation_date %in% VAL_DATES)) %>%
+    train %>% 
     as.matrix
 
 train_data <- lgb.Dataset(data = train_data,
-                          label = train_label)
-
-val_data <- lgb.Dataset(data = val_data,
-                        label = val_label)
-toc()
-
+                          label = label$deal_probability)
 model <- lgb.train(
     params=TRAIN_PARAMS, 
     train_data,
     nrounds=N_ROUNDS,
-    min_data=1,
-    early_stopping_rounds=200,
     categorical_feature = which(colnames(train_data) %in% CATEGORICAL_FEATURES),
-    valids = list(train = train_data, valid = val_data)
+    min_data=1
 )
+
+deal_probability = predict(model, as.matrix(test))
+preds = data_frame(item_id=test_id$item_id, 
+                   deal_probability=deal_probability) %>%
+        mutate(deal_probability = ifelse(deal_probability>1, 1, deal_probability),
+               deal_probability = ifelse(deal_probability<0, 0, deal_probability))
+
+preds %>% write_csv('submission.csv')
+
+# Save output
+OUTPUT_DB <-
+    file.path(DATA_FOLDER, 'derived', OUTPUT_DB) %>%
+    src_sqlite(create=TRUE)
+
+copy_to(OUTPUT_DB, 
+        preds, 
+        name=MODEL_ID, 
+        temporary=FALSE,
+        overwrite = TRUE)
+
+

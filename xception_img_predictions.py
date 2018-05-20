@@ -12,7 +12,8 @@ os.chdir('/home/greg/avito')
 TEST_MODE = False
 ZIP_FILES = ['/home/greg/.kaggle/competitions/avito-demand-prediction/train_jpg.zip',
              '/home/greg/.kaggle/competitions/avito-demand-prediction/test_jpg.zip']
-OUTPUT_FOLDER = '/home/greg/data/xception_img_predictions'
+DATA_FOLDER = '/home/greg/.kaggle/competitions/avito-demand-prediction/'
+OUTPUT_FOLDER = os.path.join(DATA_FOLDER, 'derived', 'xception_img_predictions')
 
 def get_features(base_model, model, img):
     x = image.img_to_array(img)
